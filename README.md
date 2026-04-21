@@ -34,6 +34,6 @@ pnpm dev
 ## 개발 단계
 
 - [x] Phase 1 — 사람 탐지 + 바운딩 박스 + 인원수
-- [ ] Phase 2 — 성별 / 나이 추정
+- [x] Phase 2 — 성별 / 나이 추정 (InsightFace)
 - [ ] Phase 3 — 자세 분류 (서있음 / 앉음)
 - [ ] Phase 4 — CSV 로그 + 대시보드

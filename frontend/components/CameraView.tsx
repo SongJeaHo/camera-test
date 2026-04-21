@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+type FaceAttributes = {
+  age: number;
+  age_group: string;
+  gender: "M" | "F";
+  det_score: number;
+};
 
 type Detection = {
   x1: number;
@@ -8,18 +15,26 @@ type Detection = {
   x2: number;
   y2: number;
   confidence: number;
+  face: FaceAttributes | null;
 };
 
 type AnalyzeResponse = {
   frame: { width: number; height: number };
   count: number;
   people: Detection[];
-  inference_ms: number;
+  unassigned_faces: unknown[];
+  inference_ms: { person: number; face: number };
 };
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws/analyze";
-const ANALYZE_FPS = 4;
+const ANALYZE_FPS = 3;
 const JPEG_QUALITY = 0.7;
+
+const genderColor = (gender: "M" | "F" | null): string => {
+  if (gender === "M") return "#60a5fa";
+  if (gender === "F") return "#f472b6";
+  return "#22d3ee";
+};
 
 const CameraView = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -31,10 +46,18 @@ const CameraView = () => {
 
   const [status, setStatus] = useState<"idle" | "connecting" | "streaming" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [stats, setStats] = useState<{ count: number; inferenceMs: number }>({
-    count: 0,
-    inferenceMs: 0,
-  });
+  const [latest, setLatest] = useState<AnalyzeResponse | null>(null);
+
+  const genderStats = useMemo(() => {
+    if (!latest) return { M: 0, F: 0, unknown: 0 };
+    const stats = { M: 0, F: 0, unknown: 0 };
+    latest.people.forEach((p) => {
+      if (!p.face) stats.unknown += 1;
+      else if (p.face.gender === "M") stats.M += 1;
+      else stats.F += 1;
+    });
+    return stats;
+  }, [latest]);
 
   useEffect(() => {
     let stopped = false;
@@ -61,26 +84,28 @@ const CameraView = () => {
         return;
       }
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const latest = latestRef.current;
-      if (latest) {
-        const sx = canvas.width / latest.frame.width;
-        const sy = canvas.height / latest.frame.height;
+      const data = latestRef.current;
+      if (data) {
+        const sx = canvas.width / data.frame.width;
+        const sy = canvas.height / data.frame.height;
         ctx.lineWidth = 3;
-        ctx.strokeStyle = "#22d3ee";
-        ctx.fillStyle = "#22d3ee";
         ctx.font = "16px ui-sans-serif, system-ui, sans-serif";
-        latest.people.forEach((p, idx) => {
+        data.people.forEach((p, idx) => {
+          const color = genderColor(p.face?.gender ?? null);
           const x = p.x1 * sx;
           const y = p.y1 * sy;
           const w = (p.x2 - p.x1) * sx;
           const h = (p.y2 - p.y1) * sy;
+          ctx.strokeStyle = color;
+          ctx.fillStyle = color;
           ctx.strokeRect(x, y, w, h);
-          const label = `#${idx + 1}  ${(p.confidence * 100).toFixed(0)}%`;
+          const label = p.face
+            ? `#${idx + 1}  ${p.face.gender}  ${p.face.age_group} (${p.face.age})`
+            : `#${idx + 1}  unknown`;
           const tw = ctx.measureText(label).width + 10;
           ctx.fillRect(x, Math.max(0, y - 22), tw, 22);
           ctx.fillStyle = "#0b0f14";
           ctx.fillText(label, x + 5, Math.max(14, y - 6));
-          ctx.fillStyle = "#22d3ee";
         });
       }
       animationId = requestAnimationFrame(drawOverlay);
@@ -156,7 +181,7 @@ const CameraView = () => {
         try {
           const data = JSON.parse(ev.data) as AnalyzeResponse;
           latestRef.current = data;
-          setStats({ count: data.count, inferenceMs: data.inference_ms });
+          setLatest(data);
         } catch (err) {
           console.error("invalid ws payload", err);
         }
@@ -186,6 +211,9 @@ const CameraView = () => {
     };
   }, []);
 
+  const totalInferenceMs =
+    (latest?.inference_ms.person ?? 0) + (latest?.inference_ms.face ?? 0);
+
   return (
     <section className="w-full max-w-4xl flex flex-col gap-3">
       <div className="relative rounded-lg overflow-hidden bg-black aspect-video">
@@ -204,14 +232,36 @@ const CameraView = () => {
           {errorMsg && <span className="text-red-400 ml-2">{errorMsg}</span>}
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-gray-800/60 rounded p-4">
           <div className="text-xs text-gray-400">현재 인원</div>
-          <div className="text-3xl font-semibold">{stats.count}</div>
+          <div className="text-3xl font-semibold">{latest?.count ?? 0}</div>
         </div>
         <div className="bg-gray-800/60 rounded p-4">
-          <div className="text-xs text-gray-400">추론 시간</div>
-          <div className="text-3xl font-semibold">{stats.inferenceMs.toFixed(1)} ms</div>
+          <div className="text-xs text-gray-400">성별</div>
+          <div className="text-sm mt-1">
+            <span className="text-[#60a5fa]">M {genderStats.M}</span>
+            <span className="mx-2 text-gray-500">·</span>
+            <span className="text-[#f472b6]">F {genderStats.F}</span>
+            {genderStats.unknown > 0 && (
+              <>
+                <span className="mx-2 text-gray-500">·</span>
+                <span className="text-gray-400">? {genderStats.unknown}</span>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="bg-gray-800/60 rounded p-4">
+          <div className="text-xs text-gray-400">추론 시간 (합계)</div>
+          <div className="text-3xl font-semibold">{totalInferenceMs.toFixed(0)} ms</div>
+          <div className="text-xs text-gray-500 mt-1">
+            person {latest?.inference_ms.person.toFixed(0) ?? 0} · face{" "}
+            {latest?.inference_ms.face.toFixed(0) ?? 0}
+          </div>
+        </div>
+        <div className="bg-gray-800/60 rounded p-4">
+          <div className="text-xs text-gray-400">WebSocket</div>
+          <div className="text-sm mt-1 font-mono break-all">{WS_URL}</div>
         </div>
       </div>
     </section>

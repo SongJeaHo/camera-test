@@ -21,7 +21,8 @@
 ### 백엔드 (Python)
 - FastAPI + `uvicorn` (WebSocket)
 - **YOLOv8** (`ultralytics`) — 사람 탐지 + 자세 추정(pose keypoints)
-- **DeepFace** — 얼굴에서 나이/성별 추정
+- **InsightFace** (buffalo_l, ONNX Runtime) — 얼굴 탐지 + 나이/성별 추정
+  - 초기 계획 DeepFace에서 변경: macOS ARM의 TensorFlow 설치 복잡도와 나이 추정 정확도 이점 때문에 교체
 - OpenCV — 프레임 디코딩
 - Python 3.11
 
