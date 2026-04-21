@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.venv/
+venv/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+.pnpm-store/
+*.tsbuildinfo
+next-env.d.ts
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# Models (downloaded weights — keep out of git)
+*.pt
+*.onnx
+*.weights
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
