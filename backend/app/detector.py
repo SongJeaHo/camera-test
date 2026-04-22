@@ -35,7 +35,7 @@ class PersonDetector:
         self,
         model_name: str = "yolov8n.pt",
         conf: float = 0.4,
-        tracker: str = "botsort.yaml",
+        tracker: str = "bytetrack.yaml",
     ) -> None:
         self.model = YOLO(model_name)
         self.conf = conf
