@@ -15,7 +15,17 @@ type Detection = {
   x2: number;
   y2: number;
   confidence: number;
+  track_id: number | null;
+  dwell_sec: number;
   face: FaceAttributes | null;
+};
+
+const formatDwell = (sec: number): string => {
+  const total = Math.max(0, Math.floor(sec));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}:${String(s).padStart(2, "0")}`;
 };
 
 type AnalyzeResponse = {
@@ -99,9 +109,11 @@ const CameraView = () => {
           ctx.strokeStyle = color;
           ctx.fillStyle = color;
           ctx.strokeRect(x, y, w, h);
+          const idLabel = p.track_id != null ? `#${p.track_id}` : `#${idx + 1}`;
+          const dwellLabel = formatDwell(p.dwell_sec);
           const label = p.face
-            ? `#${idx + 1}  ${p.face.gender}  ${p.face.age_group} (${p.face.age})`
-            : `#${idx + 1}  unknown`;
+            ? `${idLabel}  ${p.face.gender}  ${p.face.age_group} (${p.face.age})  ·  ${dwellLabel}`
+            : `${idLabel}  unknown  ·  ${dwellLabel}`;
           const tw = ctx.measureText(label).width + 10;
           ctx.fillRect(x, Math.max(0, y - 22), tw, 22);
           ctx.fillStyle = "#0b0f14";

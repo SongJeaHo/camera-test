@@ -11,8 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.detector import PersonDetector
 from app.face_analyzer import FaceAnalyzer, match_face_to_person
+from app.track_history import TrackHistory
 
-app = FastAPI(title="camera-test backend", version="0.2.0")
+app = FastAPI(title="camera-test backend", version="0.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,10 +37,13 @@ def _decode_jpeg(data: bytes) -> np.ndarray | None:
     return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
 
-def _analyze_frame(frame: np.ndarray) -> dict:
+def _analyze_frame(frame: np.ndarray, history: TrackHistory) -> dict:
     t0 = time.perf_counter()
-    people = person_detector.detect(frame)
+    people = person_detector.track(frame)
     t_person = (time.perf_counter() - t0) * 1000
+
+    now = time.time()
+    history.update((p.track_id for p in people), now)
 
     t1 = time.perf_counter()
     faces = face_analyzer.analyze(frame)
@@ -57,10 +61,15 @@ def _analyze_frame(frame: np.ndarray) -> dict:
             "det_score": round(face.det_score, 3),
         }
         if idx is None:
-            unassigned_faces.append({**face_dict, **{
-                "x1": round(face.x1, 2), "y1": round(face.y1, 2),
-                "x2": round(face.x2, 2), "y2": round(face.y2, 2),
-            }})
+            unassigned_faces.append(
+                {
+                    **face_dict,
+                    "x1": round(face.x1, 2),
+                    "y1": round(face.y1, 2),
+                    "x2": round(face.x2, 2),
+                    "y2": round(face.y2, 2),
+                }
+            )
         else:
             prev = attached.get(idx)
             if prev is None or face.det_score > prev["det_score"]:
@@ -70,6 +79,9 @@ def _analyze_frame(frame: np.ndarray) -> dict:
     for i, p in enumerate(people):
         entry = p.to_dict()
         entry["face"] = attached.get(i)
+        entry["dwell_sec"] = (
+            round(history.dwell(p.track_id, now), 1) if p.track_id is not None else 0.0
+        )
         people_payload.append(entry)
 
     h, w = frame.shape[:2]
@@ -88,6 +100,7 @@ def _analyze_frame(frame: np.ndarray) -> dict:
 @app.websocket("/ws/analyze")
 async def websocket_analyze(ws: WebSocket) -> None:
     await ws.accept()
+    history = TrackHistory(ttl_sec=10.0)
     try:
         while True:
             data = await ws.receive_bytes()
@@ -95,7 +108,7 @@ async def websocket_analyze(ws: WebSocket) -> None:
             if frame is None:
                 await ws.send_json({"error": "invalid_frame"})
                 continue
-            payload = await asyncio.to_thread(_analyze_frame, frame)
+            payload = await asyncio.to_thread(_analyze_frame, frame, history)
             await ws.send_json(payload)
     except WebSocketDisconnect:
         return
